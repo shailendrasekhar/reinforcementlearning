@@ -1,0 +1,37 @@
+experiment:
+  name: sarsa_frozenlake
+  seed: 42
+
+environment:
+  name: frozenlake
+  params:
+    map_name: "4x4"
+    is_slippery: false
+
+agent:
+  name: sarsa
+  params:
+    learning_rate: 0.1
+    discount_factor: 0.99
+  exploration:
+    strategy: epsilon_greedy
+    params:
+      epsilon_start: 1.0
+      epsilon_end: 0.01
+      decay_type: linear
+      decay_steps: 500000
+
+training:
+  mode: episodic
+  num_episodes: 10000
+  max_steps_per_episode: 100
+  log_frequency: 1000
+
+evaluation:
+  num_episodes: 100
+  success_threshold: 0.0
+
+output:
+  base_dir: outputs
+  save_plots: true
+  save_metrics_csv: true

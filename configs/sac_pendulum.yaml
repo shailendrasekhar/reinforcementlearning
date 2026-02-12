@@ -1,0 +1,35 @@
+experiment:
+  name: sac_pendulum
+  seed: 42
+
+environment:
+  name: pendulum
+
+agent:
+  name: sac
+  params:
+    learning_rate: 0.0003
+    discount_factor: 0.99
+    tau: 0.005
+    batch_size: 256
+    buffer_size: 100000
+    warmup_steps: 1000
+    auto_entropy: true
+    init_alpha: 0.2
+    hidden_dims: [256, 256]
+    device: auto
+
+training:
+  mode: episodic
+  num_episodes: 200
+  max_steps_per_episode: 200
+  log_frequency: 20
+
+evaluation:
+  num_episodes: 20
+  success_threshold: -300.0
+
+output:
+  base_dir: outputs
+  save_plots: true
+  save_metrics_csv: true

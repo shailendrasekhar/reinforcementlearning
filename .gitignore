@@ -1,0 +1,13 @@
+outputs/
+__pycache__/
+*.pyc
+*.pkl
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+*.egg
+.pytest_cache/
+outputs/

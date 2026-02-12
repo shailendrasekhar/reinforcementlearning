@@ -1,0 +1,48 @@
+experiment:
+  name: dqn_cartpole
+  seed: 42
+
+environment:
+  name: cartpole
+
+agent:
+  name: dqn
+  params:
+    learning_rate: 0.001
+    discount_factor: 0.99
+    batch_size: 64
+    buffer_size: 50000
+    warmup_steps: 500
+    train_frequency: 4
+    target_update_frequency: 500
+    hidden_dims: [128, 128]
+    gradient_clip: 1.0
+    device: auto
+  exploration:
+    strategy: epsilon_greedy
+    params:
+      epsilon_start: 1.0
+      epsilon_end: 0.01
+      decay_type: linear
+      decay_steps: 50000
+
+training:
+  mode: episodic
+  num_episodes: 1000
+  max_steps_per_episode: 500
+  log_frequency: 100
+
+evaluation:
+  num_episodes: 50
+  success_threshold: 195.0
+
+callbacks:
+  - type: checkpoint
+    params:
+      frequency: 100
+      save_best: true
+
+output:
+  base_dir: outputs
+  save_plots: true
+  save_metrics_csv: true

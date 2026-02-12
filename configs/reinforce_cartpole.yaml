@@ -1,0 +1,30 @@
+experiment:
+  name: reinforce_cartpole
+  seed: 42
+
+environment:
+  name: cartpole
+
+agent:
+  name: reinforce
+  params:
+    learning_rate: 0.001
+    discount_factor: 0.99
+    use_baseline: true
+    hidden_dims: [128, 128]
+    device: auto
+
+training:
+  mode: episodic
+  num_episodes: 500
+  max_steps_per_episode: 500
+  log_frequency: 100
+
+evaluation:
+  num_episodes: 50
+  success_threshold: 195.0
+
+output:
+  base_dir: outputs
+  save_plots: true
+  save_metrics_csv: true

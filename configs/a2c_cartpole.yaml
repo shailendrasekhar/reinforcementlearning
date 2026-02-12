@@ -1,0 +1,32 @@
+experiment:
+  name: a2c_cartpole
+  seed: 42
+
+environment:
+  name: cartpole
+
+agent:
+  name: a2c
+  params:
+    learning_rate: 0.0003
+    discount_factor: 0.99
+    value_coeff: 0.5
+    entropy_coeff: 0.05
+    gradient_clip: 0.5
+    hidden_dims: [128, 128]
+    device: auto
+
+training:
+  mode: episodic
+  num_episodes: 3000
+  max_steps_per_episode: 500
+  log_frequency: 300
+
+evaluation:
+  num_episodes: 50
+  success_threshold: 195.0
+
+output:
+  base_dir: outputs
+  save_plots: true
+  save_metrics_csv: true
