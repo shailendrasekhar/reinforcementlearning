@@ -1,0 +1,192 @@
+@startuml Infrastructure Layer — Detailed Design
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam defaultFontName Segoe UI
+skinparam shadowing false
+skinparam roundcorner 8
+skinparam classAttributeIconSize 0
+skinparam classFontStyle bold
+
+title **Infrastructure Layer  «infrastructure/»  — Detailed Class Diagram**
+
+' ═══════════════════════
+'  EXPERIMENT RUNNER  (Orchestrator)
+' ═══════════════════════
+package "experiment_runner.py" #FFF3E0 {
+    class ExperimentRunner {
+        - config : Dict
+        - config_loader : ConfigLoader
+        - logger : Logger
+        --
+        + __init__(config: Dict)
+        + run() : ExperimentResult
+        + run_multi_seed(seeds: List[int]) : List[ExperimentResult]
+        + compare(configs: List[Dict]) : ComparisonResult
+        --
+        - _setup_env() : EnvWrapper
+        - _setup_agent(env_info) : BaseAgent
+        - _setup_callbacks() : CallbackList
+        - _setup_trainer(env, agent, callbacks) : EpisodicTrainer
+        - _train(trainer) : TrainingResult
+        - _evaluate(env, agent) : EvaluationResult
+        - _save_artifacts(result, artifact_store)
+    }
+
+    class ExperimentResult <<dataclass>> {
+        + config : Dict
+        + training_result : TrainingResult
+        + evaluation_result : EvaluationResult
+        + output_dir : str
+    }
+
+    class ComparisonResult <<dataclass>> {
+        + results : List[ExperimentResult]
+        + comparison_plots : Dict
+    }
+}
+
+' ═══════════════════════
+'  CONFIG LOADER
+' ═══════════════════════
+package "config_loader.py" #E3F2FD {
+    class ConfigLoader {
+        --
+        + {static} load(path: str) : Dict
+        + {static} validate(config: Dict) : Dict
+        + {static} merge_defaults(config: Dict) : Dict
+        + {static} save(config: Dict, path: str)
+        --
+        .. Parses YAML config files ..
+        .. Validates required fields ..
+        .. Merges with sensible defaults ..
+    }
+}
+
+' ═══════════════════════
+'  ARTIFACT STORE
+' ═══════════════════════
+package "artifact_store.py" #E8F5E9 {
+    class ArtifactStore {
+        - base_dir : str
+        - env_name : str
+        - algo_name : str
+        - timestamp : str
+        - run_dir : Path
+        --
+        + __init__(base_dir, env_name, algo_name, timestamp)
+        + save_config(config: Dict)
+        + save_final_model(state_dict: Dict)
+        + save_plot(fig: Figure, name: str)
+        + save_gif(gif_path: str)
+        + save_metrics_csv(records: List[Dict])
+        + load_model(path: str) : Dict
+        --
+        + run_dir : Path  «property»
+        + plots_dir : Path  «property»
+        + gifs_dir : Path  «property»
+        + models_dir : Path  «property»
+    }
+
+    note bottom of ArtifactStore
+      Directory structure:
+      outputs/
+        <env_name>/
+          <algo_name>/
+            <timestamp>/
+              config.yaml
+              models/
+              plots/
+              gifs/
+              metrics.csv
+    end note
+}
+
+' ═══════════════════════
+'  VISUALIZER
+' ═══════════════════════
+package "visualizer.py" #F3E5F5 {
+    class Visualizer {
+        --
+        + {static} plot_training_rewards(result: TrainingResult) : Figure
+        + {static} plot_episode_lengths(result: TrainingResult) : Figure
+        + {static} plot_losses(result: TrainingResult) : Figure
+        + {static} plot_epsilon_decay(result: TrainingResult) : Figure
+        + {static} plot_evaluation_summary(result: EvaluationResult) : Figure
+        + {static} plot_comparison(results: List) : Figure
+        --
+        .. All methods return matplotlib Figure objects ..
+        .. Consistent styling across all plot types ..
+    }
+}
+
+' ═══════════════════════
+'  LOGGER
+' ═══════════════════════
+package "logger.py" #FCE4EC {
+    class Logger {
+        - name : str
+        - level : int
+        - _logger : logging.Logger
+        --
+        + __init__(name, level)
+        + info(msg: str)
+        + debug(msg: str)
+        + warning(msg: str)
+        + error(msg: str)
+        + training_to_records(result: TrainingResult) : List[Dict]
+        --
+        .. Structured logging with formatting ..
+        .. Converts TrainingResult to CSV-ready records ..
+    }
+}
+
+' ═══════════════════════
+'  GIF RECORDER
+' ═══════════════════════
+package "gif_recorder.py" #FFFDE7 {
+    class "<<module>> gif_recorder" as GifRecorder {
+        + record_episode_gif(env_name, agent, save_path,
+        \t  max_steps, fps, max_frames, **env_kwargs) : str
+        --
+        - _coerce_action(action, action_space) : Any
+        --
+        .. Creates gymnasium env with render_mode="rgb_array" ..
+        .. Captures frames via env.render() ..
+        .. Coerces actions for discrete/continuous spaces ..
+        .. Saves animated GIF via imageio ..
+        .. Frame cap (max_frames=600) to prevent huge files ..
+        .. Fallback to random actions on agent errors ..
+    }
+}
+
+' ═══════════════════════
+'  RELATIONSHIPS
+' ═══════════════════════
+
+' ExperimentRunner orchestrates everything
+ExperimentRunner --> ConfigLoader : loads &\nvalidates config
+ExperimentRunner --> ArtifactStore : saves all\nartifacts
+ExperimentRunner --> Visualizer : generates\nplots
+ExperimentRunner --> Logger : structured\nlogging
+ExperimentRunner --> GifRecorder : records\nepisode GIFs
+
+' ExperimentRunner uses Core layer (shown as external refs)
+ExperimentRunner ..> "core.EpisodicTrainer" : creates trainer
+ExperimentRunner ..> "core.RolloutTrainer" : creates trainer
+ExperimentRunner ..> "core.Evaluator" : evaluates agent
+ExperimentRunner ..> "core.CallbackList" : assembles callbacks
+ExperimentRunner ..> "agents.AgentRegistry" : creates agent
+ExperimentRunner ..> "environments.EnvRegistry" : creates env
+
+' Internal dependencies
+Visualizer ..> "core.TrainingResult" : reads
+Visualizer ..> "core.EvaluationResult" : reads
+Logger ..> "core.TrainingResult" : converts to records
+ArtifactStore ..> Visualizer : receives\nFigures
+GifRecorder ..> "core.BaseAgent" : calls\nselect_action
+
+' ExperimentResult composition
+ExperimentRunner ..> ExperimentResult : produces
+ExperimentRunner ..> ComparisonResult : produces
+
+@enduml

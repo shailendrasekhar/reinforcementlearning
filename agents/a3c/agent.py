@@ -1,4 +1,11 @@
-"""A2C agent — Advantage Actor-Critic (synchronous, single-env)."""
+"""A3C agent — Asynchronous Advantage Actor-Critic (single-threaded variant).
+
+This implementation uses the A2C architecture but with an n-step return
+bootstrapping approach, making it compatible with the episodic trainer.
+For true asynchronous multi-worker training, a separate process-based
+launcher would be needed, but this captures the core A3C algorithm logic
+in a single-threaded context.
+"""
 
 from typing import Any, Dict, List
 
@@ -15,12 +22,16 @@ except ImportError:
     torch = None
 
 
-class A2CAgent(BaseAgent):
-    """Advantage Actor-Critic with shared backbone."""
+class A3CAgent(BaseAgent):
+    """A3C-style agent (single-threaded) with n-step returns.
+
+    Uses shared actor-critic network, n-step bootstrapping,
+    and entropy regularization.
+    """
 
     def __init__(self, env_info: Dict[str, Any], **kwargs):
         if torch is None:
-            raise ImportError("PyTorch required for A2C. Install: pip install torch")
+            raise ImportError("PyTorch required for A3C. Install: pip install torch")
 
         from components.networks import ActorCriticNetwork, get_device
 
@@ -30,6 +41,7 @@ class A2CAgent(BaseAgent):
         self.value_coeff = kwargs.get("value_coeff", 0.5)
         self.entropy_coeff = kwargs.get("entropy_coeff", 0.01)
         self.grad_clip = kwargs.get("gradient_clip", 0.5)
+        self.n_steps = kwargs.get("n_steps", 5)
 
         device_str = kwargs.get("device", "auto")
         self.device = get_device(device_str)
@@ -39,14 +51,15 @@ class A2CAgent(BaseAgent):
             self.state_dim, self.action_dim, hidden
         ).to(self.device)
 
-        lr = kwargs.get("learning_rate", 1e-3)  # 0.001
+        lr = kwargs.get("learning_rate", 1e-3)
         self.optimizer = optim.Adam(self.network.parameters(), lr=lr)
 
         self._trajectory: List[Dict] = []
+        self._step_count = 0
 
     @property
     def name(self) -> str:
-        return "a2c"
+        return "a3c"
 
     def _to_tensor(self, state):
         return (
@@ -65,6 +78,7 @@ class A2CAgent(BaseAgent):
                 "log_prob": dist.log_prob(action),
                 "value": value.squeeze(),
                 "entropy": dist.entropy().squeeze(),
+                "state": state,
             })
         else:
             action = torch.argmax(logits, dim=-1)
@@ -74,21 +88,34 @@ class A2CAgent(BaseAgent):
         if self._trajectory:
             self._trajectory[-1]["reward"] = transition.reward
             self._trajectory[-1]["done"] = transition.done
+            self._trajectory[-1]["next_state"] = transition.next_state
+
+        self._step_count += 1
+
+        # Perform n-step update when we have enough steps or episode ends
+        if len(self._trajectory) >= self.n_steps or transition.done:
+            return self._n_step_update(transition.done, transition.next_state)
+
         return {}
 
-    def on_episode_start(self) -> None:
-        self._trajectory = []
-
-    def on_episode_end(self, episode_reward: float) -> Dict[str, float]:
+    def _n_step_update(self, done: bool, last_state) -> Dict[str, float]:
+        """Perform n-step return update."""
         if not self._trajectory:
             return {}
 
-        # Compute returns
+        # Bootstrap value for the last state
+        if done:
+            R = 0.0
+        else:
+            with torch.no_grad():
+                _, last_val = self.network(self._to_tensor(last_state))
+            R = last_val.item()
+
+        # Compute n-step returns
         returns = []
-        G = 0.0
         for t in reversed(self._trajectory):
-            G = t["reward"] + self.gamma * G * (1 - float(t["done"]))
-            returns.insert(0, G)
+            R = t["reward"] + self.gamma * R * (1 - float(t["done"]))
+            returns.insert(0, R)
 
         returns_t = torch.FloatTensor(returns).to(self.device)
         values = torch.stack([t["value"] for t in self._trajectory])
@@ -122,6 +149,15 @@ class A2CAgent(BaseAgent):
             "value_loss": value_loss.item(),
             "entropy": -entropy_loss.item(),
         }
+
+    def on_episode_start(self) -> None:
+        self._trajectory = []
+
+    def on_episode_end(self, episode_reward: float) -> Dict[str, float]:
+        # Flush any remaining trajectory data
+        if self._trajectory:
+            return self._n_step_update(done=True, last_state=None)
+        return {}
 
     def get_state_dict(self) -> Dict[str, Any]:
         return {

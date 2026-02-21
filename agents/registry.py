@@ -39,6 +39,8 @@ def _register_defaults():
     from agents.ppo.agent import PPOAgent
     from agents.ddpg.agent import DDPGAgent
     from agents.sac.agent import SACAgent
+    from agents.td3.agent import TD3Agent
+    from agents.a3c.agent import A3CAgent
 
     AgentRegistry.register("q_learning", QLearningAgent)
     AgentRegistry.register("sarsa", SarsaAgent)
@@ -48,6 +50,8 @@ def _register_defaults():
     AgentRegistry.register("ppo", PPOAgent)
     AgentRegistry.register("ddpg", DDPGAgent)
     AgentRegistry.register("sac", SACAgent)
+    AgentRegistry.register("td3", TD3Agent)
+    AgentRegistry.register("a3c", A3CAgent)
 
 
 _register_defaults()

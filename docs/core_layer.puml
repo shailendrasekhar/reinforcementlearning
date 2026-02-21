@@ -1,0 +1,234 @@
+@startuml Core Layer — Detailed Design
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam defaultFontName Segoe UI
+skinparam shadowing false
+skinparam roundcorner 8
+skinparam classAttributeIconSize 0
+skinparam classFontStyle bold
+
+title **Core Layer  «core/»  — Detailed Class Diagram**
+
+' ═══════════════════════
+'  TYPES (dataclasses)
+' ═══════════════════════
+package "types.py" #FFFDE7 {
+    class Transition <<dataclass>> {
+        + state : Any
+        + action : Any
+        + reward : float
+        + next_state : Any
+        + done : bool
+        + info : Dict
+    }
+
+    class TrainingResult <<dataclass>> {
+        + episode_rewards : List[float]
+        + episode_lengths : List[int]
+        + losses : List[float]
+        + epsilon_values : List[float]
+        + training_time : float
+        + total_episodes : int
+        + best_reward : float
+        + best_episode : int
+    }
+
+    class EvaluationResult <<dataclass>> {
+        + mean_reward : float
+        + std_reward : float
+        + episode_rewards : List[float]
+        + episode_lengths : List[int]
+        + evaluation_time : float
+    }
+}
+
+' ═══════════════════════
+'  ABSTRACT AGENT
+' ═══════════════════════
+package "agent.py" #E8F5E9 {
+    abstract class BaseAgent {
+        # device : torch.device
+        # gamma : float
+        # learning_rate : float
+        # training : bool
+        --
+        + {abstract} name : str  «property»
+        + {abstract} select_action(state, explore) : Any
+        + {abstract} update(transition: Transition) : Optional[float]
+        + {abstract} get_state_dict() : Dict
+        + {abstract} load_state_dict(state_dict: Dict)
+        --
+        + train_mode()
+        + eval_mode()
+        + on_episode_start(episode: int)
+        + on_episode_end(episode: int)
+        + get_analysis_data() : Dict
+    }
+}
+
+' ═══════════════════════
+'  ENVIRONMENT WRAPPER
+' ═══════════════════════
+package "environment.py" #E3F2FD {
+    abstract class EnvWrapper {
+        + {abstract} reset() : Tuple[Any, Dict]
+        + {abstract} step(action) : Tuple[Any, float, bool, bool, Dict]
+        + {abstract} close()
+        + {abstract} observation_space : Space  «property»
+        + {abstract} action_space : Space      «property»
+        + {abstract} is_discrete : bool        «property»
+        --
+        + {abstract} state_dim : int  «property»
+        + {abstract} action_dim : int «property»
+        + {abstract} env_name : str   «property»
+    }
+
+    class GymEnvWrapper {
+        - _env : gymnasium.Env
+        - _name : str
+        --
+        + reset() : Tuple[ndarray, Dict]
+        + step(action) : Tuple[ndarray, float, bool, bool, Dict]
+        + close()
+        + render() : Optional[ndarray]
+        --
+        + observation_space : Space
+        + action_space : Space
+        + is_discrete : bool
+        + state_dim : int
+        + action_dim : int
+        + env_name : str
+    }
+
+    GymEnvWrapper --|> EnvWrapper
+}
+
+' ═══════════════════════
+'  TRAINERS
+' ═══════════════════════
+package "trainer.py + rollout_trainer.py" #F3E5F5 {
+    class EpisodicTrainer {
+        - env : EnvWrapper
+        - agent : BaseAgent
+        - callbacks : CallbackList
+        - max_steps_per_episode : int
+        --
+        + train(num_episodes, ...) : TrainingResult
+        - _run_episode(episode) : Tuple[float, int, Optional[float]]
+    }
+
+    class RolloutTrainer {
+        - env : EnvWrapper
+        - agent : BaseAgent
+        - callbacks : CallbackList
+        - rollout_length : int
+        --
+        + train(num_episodes, ...) : TrainingResult
+        - _collect_rollout() : List[Transition]
+    }
+}
+
+' ═══════════════════════
+'  EVALUATOR
+' ═══════════════════════
+package "evaluator.py" #FFF3E0 {
+    class Evaluator {
+        - env : EnvWrapper
+        - agent : BaseAgent
+        --
+        + evaluate(num_episodes, max_steps, render) : EvaluationResult
+        - _run_episode(max_steps) : Tuple[float, int]
+    }
+}
+
+' ═══════════════════════
+'  CALLBACK SYSTEM
+' ═══════════════════════
+package "callback.py" #FCE4EC {
+    abstract class Callback {
+        + on_training_start(agent, env, config)
+        + on_training_end(result: TrainingResult)
+        + on_episode_start(episode: int)
+        + on_episode_end(episode, reward, length, loss)
+        + on_step(step, transition: Transition)
+    }
+
+    class CallbackList {
+        - callbacks : List[Callback]
+        --
+        + on_training_start(...)
+        + on_training_end(...)
+        + on_episode_start(...)
+        + on_episode_end(...)
+        + on_step(...)
+    }
+
+    class ProgressCallback {
+        - total_episodes : int
+        - update_freq : int
+    }
+
+    class MetricsCallback {
+        - window_size : int
+        - episode_rewards : List
+        - episode_lengths : List
+        - losses : List
+    }
+
+    class CheckpointCallback {
+        - save_freq : int
+        - save_dir : str
+        - best_reward : float
+    }
+
+    class EarlyStoppingCallback {
+        - patience : int
+        - min_delta : float
+        - best_reward : float
+        - counter : int
+        + should_stop : bool
+    }
+
+    CallbackList o--> "0..*" Callback
+    ProgressCallback --|> Callback
+    MetricsCallback --|> Callback
+    CheckpointCallback --|> Callback
+    EarlyStoppingCallback --|> Callback
+}
+
+' ═══════════════════════
+'  RELATIONSHIPS
+' ═══════════════════════
+
+' Trainers use everything
+EpisodicTrainer --> BaseAgent : calls\nselect_action\n& update
+EpisodicTrainer --> EnvWrapper : calls\nreset & step
+EpisodicTrainer --> CallbackList : fires\nevents
+EpisodicTrainer ..> Transition : creates
+EpisodicTrainer ..> TrainingResult : produces
+
+RolloutTrainer --> BaseAgent
+RolloutTrainer --> EnvWrapper
+RolloutTrainer --> CallbackList
+RolloutTrainer ..> Transition : creates
+RolloutTrainer ..> TrainingResult : produces
+
+' Evaluator
+Evaluator --> BaseAgent : select_action
+Evaluator --> EnvWrapper : reset / step
+Evaluator ..> EvaluationResult : produces
+
+' Agent uses Transition
+BaseAgent ..> Transition : receives in\nupdate()
+
+note right of BaseAgent
+  10 concrete subclasses
+  in agents/ package
+end note
+
+note bottom of GymEnvWrapper
+  Wraps gymnasium.Env
+  with render_mode support
+end note
+
+@enduml

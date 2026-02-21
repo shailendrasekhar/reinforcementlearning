@@ -1,0 +1,234 @@
+@startuml UI / Presentation Layer — Detailed Design
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam defaultFontName Segoe UI
+skinparam shadowing false
+skinparam roundcorner 8
+skinparam activityBorderThickness 2
+skinparam swimlaneBorderThickness 2
+
+title **Presentation Layer  «app.py — Streamlit UI»  — Detailed Activity & Component Diagram**
+
+' ═══════════════════════════════════
+'  SECTION 1: PAGE STRUCTURE
+' ═══════════════════════════════════
+
+package "Streamlit Page Layout" #E3F2FD {
+
+    component [main()\n──────\nEntry point\nPage config: wide layout\nSession state init] as MAIN
+
+    component [inject_custom_css()\n──────\nDark text colors\nCard hover effects\nGradient buttons\nStop button styling] as CSS
+
+    component [render_header()\n──────\nTitle / subtitle\nProject branding] as HDR
+
+    package "Sidebar" #BBDEFB {
+        component [render_env_selector()\n──────\nClickable environment cards\nwith luminescent borders\n7 environments] as ENV_SEL
+
+        component [render_algo_selector(env_name)\n──────\nClickable algorithm cards\nFiltered by env compatibility\n10 algorithms] as ALGO_SEL
+
+        component [render_hyperparameters(algo)\n──────\nDynamic sliders/inputs\nPer-algorithm params\nNetwork architecture config] as HP
+
+        component [render_training_config(env)\n──────\nEpisodes, max steps\nEval episodes, seed\nStart button] as TRAIN_CFG
+
+        component [render_output_browser()\n──────\nTree: env → algo → timestamp\nClickable run selection] as OUT_BROWSER
+    }
+
+    package "Main Content Area" #C8E6C9 {
+        component [run_experiment(cfg)\n──────\nOrchestrates full pipeline\nLive progress / charts / metrics\nStop button] as RUN_EXP
+
+        component [render_run_viewer()\n──────\nDisplays selected run\nConfig, plots, GIFs, metrics] as RUN_VIEW
+    }
+}
+
+' ═══════════════════════════════════
+'  SECTION 2: HELPER FUNCTIONS
+' ═══════════════════════════════════
+
+package "Helper Functions" #FFF3E0 {
+    component [set_seed(seed)\n──────\nnumpy / random / torch] as SEED
+
+    component [build_agent_params(algo, hp)\n──────\nConverts UI dict → agent kwargs\nHandles network dims, max_action\nPer-algorithm parameter mapping] as BUILD
+
+    component [create_env(env_name)\n──────\nEnvRegistry.create()] as CENV
+
+    component [get_env_kwargs(env_name)\n──────\nEnv-specific args\nfor GIF recording] as ENVKW
+
+    component [train_with_live_updates(...)\n──────\nRuns EpisodicTrainer/RolloutTrainer\nUpdates Streamlit chart + metrics\nChecks stop flag each episode] as TRAIN
+
+    component [_update_live_chart(placeholder, result)\n──────\nRenders reward curve\nvia Streamlit line_chart] as CHART
+
+    component [_update_live_metrics(placeholder, ...)\n──────\nRenders metric cards:\nReward, Length, Loss, Epsilon] as METRICS
+}
+
+' ═══════════════════════════════════
+'  SECTION 3: SESSION STATE
+' ═══════════════════════════════════
+
+package "Streamlit Session State" #F3E5F5 {
+    database "st.session_state" as SS {
+        .. Selection ..
+        selected_env : str
+        selected_algo : str
+        .. Hyperparameters ..
+        hp_* : various
+        .. Training Control ..
+        _stop_training : bool
+        .. Output Browser ..
+        selected_run_path : str
+        .. UI State ..
+        experiment_running : bool
+    }
+}
+
+' ═══════════════════════════════════
+'  SECTION 4: EXTERNAL DEPENDENCIES
+' ═══════════════════════════════════
+
+package "External (Infrastructure + Core)" #FCE4EC {
+    component [AgentRegistry] as AR
+    component [EnvRegistry] as ER
+    component [EpisodicTrainer\nRolloutTrainer] as TRAINERS
+    component [Evaluator] as EVAL
+    component [ArtifactStore] as ASTORE
+    component [Visualizer] as VIZ
+    component [GifRecorder] as GIFREC
+    component [Callbacks\n(Progress, Metrics,\nCheckpoint, EarlyStopping)] as CBACKS
+}
+
+' ═══════════════════════════════════
+'  RELATIONSHIPS — Page Flow
+' ═══════════════════════════════════
+
+MAIN --> CSS : injects
+MAIN --> HDR : renders
+MAIN --> ENV_SEL : sidebar
+MAIN --> OUT_BROWSER : sidebar
+MAIN --> RUN_EXP : main area
+MAIN --> RUN_VIEW : main area
+
+ENV_SEL --> ALGO_SEL : env selected →\nshow algos
+ALGO_SEL --> HP : algo selected →\nshow params
+HP --> TRAIN_CFG : params set →\nshow training cfg
+TRAIN_CFG --> RUN_EXP : Start Training\nbutton pressed
+
+' ═══════════════════════════════════
+'  RELATIONSHIPS — Experiment Flow
+' ═══════════════════════════════════
+
+RUN_EXP --> SEED : sets seeds
+RUN_EXP --> CENV : creates env
+RUN_EXP --> BUILD : builds params
+RUN_EXP --> TRAIN : runs training
+RUN_EXP --> SS : reads/writes\nstop flag
+
+BUILD --> AR : AgentRegistry.create()
+CENV --> ER : EnvRegistry.create()
+TRAIN --> TRAINERS : trainer.train()
+TRAIN --> CHART : live update
+TRAIN --> METRICS : live update
+
+RUN_EXP --> EVAL : evaluates agent
+RUN_EXP --> ASTORE : saves artifacts
+RUN_EXP --> VIZ : generates plots
+RUN_EXP --> GIFREC : records GIF
+
+OUT_BROWSER --> RUN_VIEW : run selected →\nshow details
+RUN_VIEW --> ASTORE : reads artifacts
+
+' ═══════════════════════════════════
+'  RELATIONSHIPS — Callbacks
+' ═══════════════════════════════════
+
+TRAIN --> CBACKS : progress + metrics\ncallback events
+
+@enduml
+
+' ════════════════════════════════════════════════
+'  SECTION 5: SEPARATE ACTIVITY DIAGRAM — USER FLOW
+' ════════════════════════════════════════════════
+
+@startuml UI User Flow
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam defaultFontName Segoe UI
+skinparam shadowing false
+
+title **Streamlit App — User Interaction Flow**
+
+start
+
+:Open app (streamlit run app.py);
+
+:inject_custom_css();
+:render_header();
+
+fork
+  :render_output_browser();
+  note right
+    Browse previous
+    experiment outputs
+  end note
+
+  if (Run selected?) then (yes)
+    :render_run_viewer();
+    :Display config, plots,\nGIFs, metrics;
+  else (no)
+  endif
+fork again
+  :render_env_selector();
+  :User clicks environment card;
+
+  :render_algo_selector(env_name);
+  :User clicks algorithm card;
+
+  :render_hyperparameters(algo);
+  :User adjusts sliders/inputs;
+
+  :render_training_config(env);
+  :User sets episodes, steps, seed;
+
+  if (Start Training?) then (yes)
+    :run_experiment(cfg);
+
+    partition "Training Phase" {
+      :set_seed();
+      :create_env();
+      :build_agent_params() → AgentRegistry.create();
+      :Setup callbacks;
+      :Show stop button;
+
+      repeat
+        :Train episode;
+        :_update_live_chart();
+        :_update_live_metrics();
+        if (Stop pressed?) then (yes)
+          :Set _stop_training = True;
+          break
+        endif
+      repeat while (more episodes?)
+
+      :training_result;
+    }
+
+    partition "Evaluation Phase" {
+      :Evaluator.evaluate();
+      :evaluation_result;
+    }
+
+    partition "Artifact Saving" {
+      :ArtifactStore.save_config();
+      :Visualizer.plot_*() → save_plot();
+      :GifRecorder.record_episode_gif();
+      :Logger.training_to_records() → save_csv();
+      :ArtifactStore.save_final_model();
+    }
+
+    :Display results dashboard;
+    :Show GIF, plots, metrics;
+  else (no)
+  endif
+end fork
+
+stop
+
+@enduml

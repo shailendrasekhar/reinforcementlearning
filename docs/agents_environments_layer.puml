@@ -1,0 +1,364 @@
+@startuml Agents Layer — Detailed Design
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam defaultFontName Segoe UI
+skinparam shadowing false
+skinparam roundcorner 8
+skinparam classAttributeIconSize 0
+skinparam classFontStyle bold
+
+title **Agents & Environments Layer  «agents/ + environments/»  — Detailed Class Diagram**
+
+' ═══════════════════════
+'  BASE AGENT (from core)
+' ═══════════════════════
+abstract class "core.BaseAgent" as BaseAgent #E8F5E9 {
+    # device : torch.device
+    # gamma : float
+    # learning_rate : float
+    --
+    + {abstract} select_action(state, explore)
+    + {abstract} update(transition)
+    + on_episode_start(episode)
+    + on_episode_end(episode)
+    + get_analysis_data() : Dict
+}
+
+' ═══════════════════════
+'  AGENT REGISTRY
+' ═══════════════════════
+package "agents/registry.py" #FFFDE7 {
+    class AgentRegistry <<singleton>> {
+        - {static} _agents : Dict[str, Type[BaseAgent]]
+        --
+        + {static} register(name, agent_class)
+        + {static} create(name, env_info, **kwargs) : BaseAgent
+        + {static} list() : List[str]
+    }
+}
+
+' ═══════════════════════
+'  TABULAR AGENTS
+' ═══════════════════════
+package "Tabular Agents" #E3F2FD {
+    class QLearningAgent {
+        - q_table : defaultdict
+        - exploration : ExplorationStrategy
+        - alpha : float
+        --
+        + name = "q_learning"
+        + select_action(state, explore) : int
+        + update(transition) : float
+        + get_analysis_data() : Dict
+        - _build_exploration() : ExplorationStrategy
+        .. off-policy, tabular ..
+        .. Q(s,a) ← Q(s,a) + α[r + γ max Q(s',·) - Q(s,a)] ..
+    }
+
+    class SarsaAgent {
+        - q_table : defaultdict
+        - exploration : ExplorationStrategy
+        - alpha : float
+        - next_action : Optional[int]
+        --
+        + name = "sarsa"
+        + select_action(state, explore) : int
+        + update(transition) : float
+        + on_episode_start(episode)
+        + get_analysis_data() : Dict
+        - _build_exploration() : ExplorationStrategy
+        .. on-policy, tabular ..
+        .. Q(s,a) ← Q(s,a) + α[r + γ Q(s',a') - Q(s,a)] ..
+    }
+}
+
+' ═══════════════════════
+'  DEEP VALUE-BASED
+' ═══════════════════════
+package "Deep Value-Based" #F3E5F5 {
+    class DQNAgent {
+        - q_network : QNetwork
+        - target_network : QNetwork
+        - replay_buffer : UniformReplayBuffer
+        - exploration : EpsilonGreedy
+        - optimizer : Adam
+        - target_update_freq : int
+        - step_count : int
+        --
+        + name = "dqn"
+        + select_action(state, explore) : int
+        + update(transition) : Optional[float]
+        - _encode_state(state) : Tensor
+        - _to_tensor(x) : Tensor
+        .. off-policy, ε-greedy, target network ..
+        .. loss = MSE(Q(s,a), r + γ max Q_target(s',·)) ..
+    }
+}
+
+' ═══════════════════════
+'  POLICY GRADIENT (DISCRETE)
+' ═══════════════════════
+package "Policy Gradient — Discrete" #FCE4EC {
+    class ReinforceAgent {
+        - policy_net : PolicyNetwork
+        - optimizer : Adam
+        - trajectory : List[Tuple]
+        --
+        + name = "reinforce"
+        + select_action(state, explore) : int
+        + update(transition) : Optional[float]
+        + on_episode_start(episode)
+        + on_episode_end(episode)
+        .. Monte Carlo returns ..
+        .. ∇J = Σ ∇log π(a|s) · G_t ..
+    }
+
+    class A2CAgent {
+        - network : ActorCriticNetwork
+        - optimizer : Adam
+        - trajectory : List[Tuple]
+        - entropy_coef : float
+        - value_coef : float
+        --
+        + name = "a2c"
+        + select_action(state, explore) : int
+        + update(transition) : Optional[float]
+        + on_episode_start(episode)
+        + on_episode_end(episode)
+        .. advantage = R - V(s) ..
+        .. actor loss + critic loss + entropy bonus ..
+    }
+
+    class A3CAgent {
+        - network : ActorCriticNetwork
+        - optimizer : Adam
+        - trajectory : List[Tuple]
+        - n_steps : int
+        - entropy_coef : float
+        - value_coef : float
+        --
+        + name = "a3c"
+        + select_action(state, explore) : int
+        + update(transition) : Optional[float]
+        + on_episode_start(episode)
+        + on_episode_end(episode)
+        - _n_step_update() : float
+        .. n-step returns ..
+        .. asynchronous advantage ..
+    }
+
+    class PPOAgent {
+        - network : ActorCriticNetwork
+        - rollout_buffer : RolloutBuffer
+        - optimizer : Adam
+        - clip_epsilon : float
+        - entropy_coef : float
+        - value_coef : float
+        - update_epochs : int
+        --
+        + name = "ppo"
+        + select_action(state, explore) : int
+        + update(transition) : Optional[float]
+        - _train_on_rollout() : float
+        .. clipped surrogate objective ..
+        .. L_CLIP = min(r·Â, clip(r,1±ε)·Â) ..
+    }
+}
+
+' ═══════════════════════
+'  CONTINUOUS CONTROL (OFF-POLICY)
+' ═══════════════════════
+package "Continuous Control — Off-Policy" #FFF3E0 {
+    class DDPGAgent {
+        - actor : DeterministicActor
+        - critic : QCritic
+        - target_actor : DeterministicActor
+        - target_critic : QCritic
+        - replay_buffer : UniformReplayBuffer
+        - noise : OU / GaussianNoise
+        - actor_optimizer : Adam
+        - critic_optimizer : Adam
+        - tau : float
+        - max_action : float
+        --
+        + name = "ddpg"
+        + select_action(state, explore) : ndarray
+        + update(transition) : Optional[float]
+        + on_episode_start(episode)
+        - _soft_update(target, source)
+        .. deterministic policy gradient ..
+    }
+
+    class TD3Agent {
+        - actor : DeterministicActor
+        - critic_1 : QCritic
+        - critic_2 : QCritic
+        - target_actor : DeterministicActor
+        - target_critic_1 : QCritic
+        - target_critic_2 : QCritic
+        - replay_buffer : UniformReplayBuffer
+        - noise : OU / GaussianNoise
+        - policy_delay : int
+        - target_noise_std : float
+        - noise_clip : float
+        --
+        + name = "td3"
+        + select_action(state, explore) : ndarray
+        + update(transition) : Optional[float]
+        + on_episode_start(episode)
+        - _soft_update(target, source)
+        .. twin critics + delayed policy ..
+        .. target policy smoothing ..
+    }
+
+    class SACAgent {
+        - actor : GaussianActor
+        - critic_1 : QCritic
+        - critic_2 : QCritic
+        - target_critic_1 : QCritic
+        - target_critic_2 : QCritic
+        - replay_buffer : UniformReplayBuffer
+        - log_alpha : Tensor (learnable)
+        - target_entropy : float
+        - actor_optimizer : Adam
+        - critic_optimizer : Adam
+        - alpha_optimizer : Adam
+        - tau : float
+        - max_action : float
+        --
+        + name = "sac"
+        + alpha : float  «property»
+        + select_action(state, explore) : ndarray
+        + update(transition) : Optional[float]
+        - _soft_update(target, source)
+        .. max entropy RL ..
+        .. auto-tuned temperature α ..
+    }
+}
+
+' ═══════════════════════
+'  ENVIRONMENT WRAPPERS
+' ═══════════════════════
+abstract class "core.EnvWrapper" as EnvWrapper #E8F5E9 {
+    + {abstract} reset()
+    + {abstract} step(action)
+    + {abstract} is_discrete
+}
+
+package "environments/registry.py" #FFFDE7 {
+    class EnvRegistry <<singleton>> {
+        - {static} _envs : Dict[str, Callable]
+        --
+        + {static} register(name, factory)
+        + {static} create(name, **kwargs) : EnvWrapper
+        + {static} list() : List[str]
+    }
+}
+
+package "Environment Wrappers" #E3F2FD {
+    class FrozenLakeEnv {
+        .. Discrete obs, Discrete action ..
+        .. 4×4 or 8×8 grid ..
+    }
+    class CliffWalkingEnv {
+        .. Discrete obs, Discrete action ..
+        .. 4×12 grid ..
+    }
+    class CartPoleEnv {
+        .. Box obs, Discrete action ..
+        .. balance pole ..
+    }
+    class AcrobotEnv {
+        .. Box obs, Discrete action ..
+        .. swing up ..
+    }
+    class MountainCarEnv {
+        .. Box obs, Discrete action ..
+        .. reach summit ..
+    }
+    class LunarLanderEnv {
+        .. Box obs, Discrete action ..
+        .. soft landing ..
+    }
+    class PendulumEnv {
+        .. Box obs, Box action [-2,2] ..
+        .. swing up & balance ..
+    }
+}
+
+' ═══════════════════════
+'  INHERITANCE
+' ═══════════════════════
+QLearningAgent --|> BaseAgent
+SarsaAgent --|> BaseAgent
+DQNAgent --|> BaseAgent
+ReinforceAgent --|> BaseAgent
+A2CAgent --|> BaseAgent
+A3CAgent --|> BaseAgent
+PPOAgent --|> BaseAgent
+DDPGAgent --|> BaseAgent
+TD3Agent --|> BaseAgent
+SACAgent --|> BaseAgent
+
+FrozenLakeEnv --|> EnvWrapper
+CliffWalkingEnv --|> EnvWrapper
+CartPoleEnv --|> EnvWrapper
+AcrobotEnv --|> EnvWrapper
+MountainCarEnv --|> EnvWrapper
+LunarLanderEnv --|> EnvWrapper
+PendulumEnv --|> EnvWrapper
+
+' Registry relationships
+AgentRegistry --> QLearningAgent : creates
+AgentRegistry --> SarsaAgent : creates
+AgentRegistry --> DQNAgent : creates
+AgentRegistry --> ReinforceAgent : creates
+AgentRegistry --> A2CAgent : creates
+AgentRegistry --> A3CAgent : creates
+AgentRegistry --> PPOAgent : creates
+AgentRegistry --> DDPGAgent : creates
+AgentRegistry --> TD3Agent : creates
+AgentRegistry --> SACAgent : creates
+
+EnvRegistry --> FrozenLakeEnv : creates
+EnvRegistry --> CliffWalkingEnv : creates
+EnvRegistry --> CartPoleEnv : creates
+EnvRegistry --> AcrobotEnv : creates
+EnvRegistry --> MountainCarEnv : creates
+EnvRegistry --> LunarLanderEnv : creates
+EnvRegistry --> PendulumEnv : creates
+
+' ═══════════════════════
+'  COMPONENT COMPOSITION
+' ═══════════════════════
+QLearningAgent ..> "ExplorationStrategy" : uses
+SarsaAgent ..> "ExplorationStrategy" : uses
+DQNAgent ..> "QNetwork" : uses
+DQNAgent ..> "UniformReplayBuffer" : uses
+DQNAgent ..> "EpsilonGreedy" : uses
+ReinforceAgent ..> "PolicyNetwork" : uses
+A2CAgent ..> "ActorCriticNetwork" : uses
+A3CAgent ..> "ActorCriticNetwork" : uses
+PPOAgent ..> "ActorCriticNetwork" : uses
+PPOAgent ..> "RolloutBuffer" : uses
+DDPGAgent ..> "DeterministicActor" : uses
+DDPGAgent ..> "QCritic" : uses
+DDPGAgent ..> "UniformReplayBuffer" : uses
+DDPGAgent ..> "OU/GaussianNoise" : uses
+TD3Agent ..> "DeterministicActor" : uses
+TD3Agent ..> "2× QCritic" : uses
+TD3Agent ..> "UniformReplayBuffer" : uses
+TD3Agent ..> "OU/GaussianNoise" : uses
+SACAgent ..> "GaussianActor" : uses
+SACAgent ..> "2× QCritic" : uses
+SACAgent ..> "UniformReplayBuffer" : uses
+
+legend right
+  |= Category |= Agents |= Action Space |
+  | <#E3F2FD> Tabular | Q-Learning, SARSA | Discrete |
+  | <#F3E5F5> Deep Value | DQN | Discrete |
+  | <#FCE4EC> Policy Gradient | REINFORCE, A2C, A3C, PPO | Discrete |
+  | <#FFF3E0> Continuous | DDPG, TD3, SAC | Continuous (Box) |
+end legend
+
+@enduml

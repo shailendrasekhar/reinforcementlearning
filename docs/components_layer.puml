@@ -1,0 +1,240 @@
+@startuml Components Layer — Detailed Design
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam defaultFontName Segoe UI
+skinparam shadowing false
+skinparam roundcorner 8
+skinparam classAttributeIconSize 0
+skinparam classFontStyle bold
+
+title **Components Layer  «components/»  — Detailed Class Diagram**
+
+' ═══════════════════════
+'  NEURAL NETWORKS
+' ═══════════════════════
+package "networks.py" #E8F5E9 {
+    class MLP <<nn.Module>> {
+        - layers : nn.Sequential
+        --
+        + __init__(input_dim, hidden_dims, output_dim, activation, output_activation)
+        + forward(x: Tensor) : Tensor
+    }
+
+    class QNetwork <<nn.Module>> {
+        - network : MLP
+        --
+        + __init__(state_dim, action_dim, hidden_dims)
+        + forward(state: Tensor) : Tensor
+        .. returns Q-values for all actions ..
+    }
+
+    class PolicyNetwork <<nn.Module>> {
+        - network : MLP
+        --
+        + __init__(state_dim, action_dim, hidden_dims)
+        + forward(state: Tensor) : Tensor
+        .. returns action log-probabilities ..
+    }
+
+    class ActorCriticNetwork <<nn.Module>> {
+        - shared : MLP
+        - actor_head : nn.Linear
+        - critic_head : nn.Linear
+        --
+        + __init__(state_dim, action_dim, hidden_dims)
+        + forward(state) : Tuple[Tensor, Tensor]
+        + get_action(state) : Tuple[Tensor, Tensor]
+        .. policy logits + state value ..
+    }
+
+    class DeterministicActor <<nn.Module>> {
+        - network : MLP
+        - max_action : float
+        --
+        + __init__(state_dim, action_dim, hidden_dims, max_action)
+        + forward(state: Tensor) : Tensor
+        .. tanh-scaled continuous action ..
+    }
+
+    class QCritic <<nn.Module>> {
+        - network : MLP
+        --
+        + __init__(state_dim, action_dim, hidden_dims)
+        + forward(state, action) : Tensor
+        .. Q(s, a) scalar value ..
+    }
+
+    class GaussianActor <<nn.Module>> {
+        - shared : MLP
+        - mean_head : nn.Linear
+        - log_std_head : nn.Linear
+        - max_action : float
+        --
+        + __init__(state_dim, action_dim, hidden_dims, max_action)
+        + forward(state) : Tuple[Tensor, Tensor]
+        + sample(state) : Tuple[Tensor, Tensor]
+        .. reparameterized action + log_prob ..
+    }
+
+    ' Internal composition
+    QNetwork *-- MLP
+    PolicyNetwork *-- MLP
+    ActorCriticNetwork *-- MLP : shared\nbackbone
+    DeterministicActor *-- MLP
+    QCritic *-- MLP
+    GaussianActor *-- MLP : shared\nbackbone
+}
+
+' ═══════════════════════
+'  REPLAY BUFFER
+' ═══════════════════════
+package "replay_buffer.py" #E3F2FD {
+    class UniformReplayBuffer {
+        - buffer : deque
+        - capacity : int
+        - batch_size : int
+        --
+        + push(state, action, reward, next_state, done)
+        + sample() : Tuple[Tensor, ...]
+        + __len__() : int
+        .. uniform random sampling ..
+    }
+}
+
+' ═══════════════════════
+'  ROLLOUT BUFFER
+' ═══════════════════════
+package "rollout_buffer.py" #FFF3E0 {
+    class RolloutBuffer {
+        - states : List
+        - actions : List
+        - rewards : List
+        - log_probs : List
+        - values : List
+        - dones : List
+        - capacity : int
+        --
+        + push(state, action, reward, log_prob, value, done)
+        + compute_returns(last_value, gamma, gae_lambda) : Tuple[Tensor, Tensor]
+        + get_batches(batch_size) : Generator
+        + clear()
+        + is_full() : bool
+        .. GAE advantage estimation ..
+    }
+}
+
+' ═══════════════════════
+'  EXPLORATION STRATEGIES
+' ═══════════════════════
+package "exploration.py" #F3E5F5 {
+    abstract class ExplorationStrategy {
+        + {abstract} select_action(q_values, state?) : int
+        + {abstract} update(episode?)
+        + {abstract} get_info() : Dict
+    }
+
+    class EpsilonGreedy {
+        - epsilon : float
+        - scheduler : LinearScheduler | ExponentialScheduler
+        - action_dim : int
+        --
+        + select_action(q_values) : int
+        + update(episode)
+        + get_info() : Dict
+        .. ε-greedy with decay ..
+    }
+
+    class Boltzmann {
+        - temperature : float
+        - scheduler : LinearScheduler | ExponentialScheduler
+        --
+        + select_action(q_values) : int
+        + update(episode)
+        + get_info() : Dict
+        .. softmax action selection ..
+    }
+
+    EpsilonGreedy --|> ExplorationStrategy
+    Boltzmann --|> ExplorationStrategy
+}
+
+' ═══════════════════════
+'  NOISE PROCESSES
+' ═══════════════════════
+package "noise.py" #FCE4EC {
+    class OrnsteinUhlenbeckNoise {
+        - mu : ndarray
+        - sigma : float
+        - theta : float
+        - dt : float
+        - state : ndarray
+        --
+        + __call__() : ndarray
+        + reset()
+        .. temporally correlated noise ..
+    }
+
+    class GaussianNoise {
+        - mu : float
+        - sigma : float
+        - size : int
+        --
+        + __call__() : ndarray
+        + reset()
+        .. i.i.d. Gaussian noise ..
+    }
+}
+
+' ═══════════════════════
+'  SCHEDULERS
+' ═══════════════════════
+package "schedulers.py" #FFFDE7 {
+    class LinearScheduler {
+        - start : float
+        - end : float
+        - steps : int
+        --
+        + value(step: int) : float
+        .. linear interpolation ..
+    }
+
+    class ExponentialScheduler {
+        - start : float
+        - end : float
+        - decay_rate : float
+        --
+        + value(step: int) : float
+        .. exponential decay ..
+    }
+}
+
+' ═══════════════════════
+'  CROSS-PACKAGE RELATIONSHIPS
+' ═══════════════════════
+EpsilonGreedy --> LinearScheduler : driven by
+EpsilonGreedy --> ExponentialScheduler : driven by
+Boltzmann --> LinearScheduler : driven by
+Boltzmann --> ExponentialScheduler : driven by
+
+note bottom of UniformReplayBuffer
+  Used by off-policy agents:
+  DQN, DDPG, TD3, SAC
+end note
+
+note bottom of RolloutBuffer
+  Used by PPO
+  (on-policy batch collection)
+end note
+
+note right of ExplorationStrategy
+  Used by tabular agents
+  (Q-Learning, SARSA)
+  and DQN
+end note
+
+note right of OrnsteinUhlenbeckNoise
+  Used by DDPG and TD3
+  for action-space exploration
+end note
+
+@enduml

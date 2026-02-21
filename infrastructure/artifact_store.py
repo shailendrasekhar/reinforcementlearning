@@ -11,7 +11,7 @@ class ArtifactStore:
 
     Directory layout::
 
-        outputs/<label>__<timestamp>/
+        outputs/<env_name>/<algo_name>/<timestamp>/
             config.yaml
             metadata.json
             checkpoints/
@@ -19,6 +19,7 @@ class ArtifactStore:
             plots/training/
             plots/evaluation/
             plots/analysis/
+            gifs/
             final_model/
     """
 
@@ -30,15 +31,15 @@ class ArtifactStore:
         experiment_name: Optional[str] = None,
     ):
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        label = experiment_name or f"{agent_name}__{env_name}"
-        self.run_name = f"{label}__{timestamp}"
-        self.run_dir = Path(base_dir) / self.run_name
+        self.run_name = timestamp
+        self.run_dir = Path(base_dir) / env_name / agent_name / timestamp
 
         self.checkpoint_dir = self.run_dir / "checkpoints"
         self.metrics_dir = self.run_dir / "metrics"
         self.plot_dir = self.run_dir / "plots" / "training"
         self.eval_plot_dir = self.run_dir / "plots" / "evaluation"
         self.analysis_dir = self.run_dir / "plots" / "analysis"
+        self.gif_dir = self.run_dir / "gifs"
         self.model_dir = self.run_dir / "final_model"
 
         for d in (
@@ -47,6 +48,7 @@ class ArtifactStore:
             self.plot_dir,
             self.eval_plot_dir,
             self.analysis_dir,
+            self.gif_dir,
             self.model_dir,
         ):
             d.mkdir(parents=True, exist_ok=True)

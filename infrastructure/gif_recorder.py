@@ -9,6 +9,18 @@ import gymnasium as gym
 from core.agent import BaseAgent
 
 
+def _coerce_action(action, action_space: gym.Space):
+    """Make sure the action has the right type/shape for the env."""
+    if isinstance(action_space, gym.spaces.Discrete):
+        return int(action) if not isinstance(action, (int, np.integer)) else action
+    # Continuous — ensure numpy array with correct shape
+    action = np.asarray(action, dtype=np.float32).flatten()
+    action = np.clip(action, action_space.low, action_space.high)
+    if action.shape != action_space.shape:
+        action = action.reshape(action_space.shape)
+    return action
+
+
 def record_evaluation_gif(
     env_id: str,
     agent: BaseAgent,
@@ -17,6 +29,7 @@ def record_evaluation_gif(
     max_steps: int = 500,
     fps: int = 30,
     env_kwargs: Optional[dict] = None,
+    max_frames: int = 600,
 ) -> Path:
     """Run evaluation episodes and save frames as an animated GIF.
 
@@ -36,6 +49,8 @@ def record_evaluation_gif(
         Frames per second in the output GIF.
     env_kwargs : dict, optional
         Extra kwargs for gym.make.
+    max_frames : int
+        Hard cap on total frames to avoid huge GIFs.
 
     Returns
     -------
@@ -53,12 +68,16 @@ def record_evaluation_gif(
     env_kwargs = env_kwargs or {}
     env = gym.make(env_id, render_mode="rgb_array", **env_kwargs)
     discrete_obs = isinstance(env.observation_space, gym.spaces.Discrete)
+    discrete_act = isinstance(env.action_space, gym.spaces.Discrete)
 
     def _convert(s):
-        return int(s) if discrete_obs else s
+        return int(s) if discrete_obs else np.asarray(s, dtype=np.float32)
 
     frames = []
+    hit_cap = False
     for _ep in range(num_episodes):
+        if hit_cap:
+            break
         state, _info = env.reset()
         state = _convert(state)
         frame = env.render()
@@ -66,7 +85,16 @@ def record_evaluation_gif(
             frames.append(np.asarray(frame, dtype=np.uint8))
 
         for _step in range(max_steps):
-            action = agent.select_action(state, training=False)
+            if len(frames) >= max_frames:
+                hit_cap = True
+                break
+            try:
+                action = agent.select_action(state, training=False)
+                action = _coerce_action(action, env.action_space)
+            except Exception:
+                # Fallback to random action if agent fails
+                action = env.action_space.sample()
+
             state, _reward, terminated, truncated, _info = env.step(action)
             state = _convert(state)
 
@@ -81,7 +109,8 @@ def record_evaluation_gif(
 
     if not frames:
         raise RuntimeError(
-            "No frames captured — environment may not support rgb_array rendering."
+            f"No frames captured for {env_id} — "
+            "environment may not support rgb_array rendering."
         )
 
     save_path = Path(save_path)

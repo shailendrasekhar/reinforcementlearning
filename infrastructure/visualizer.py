@@ -96,6 +96,7 @@ class Visualizer:
     def plot_tabular_policy(
         analysis_data: Dict[str, Any],
         grid_shape=(4, 4),
+        arrows: Optional[Dict[int, str]] = None,
         save_path: Optional[Path] = None,
     ) -> Optional[plt.Figure]:
         """Plot Q-table policy grid for tabular agents."""
@@ -104,7 +105,9 @@ class Visualizer:
 
         q_table = analysis_data["q_table"]
         rows, cols = grid_shape
-        arrows = {0: "\u2190", 1: "\u2193", 2: "\u2192", 3: "\u2191"}
+        if arrows is None:
+            # Default: FrozenLake mapping (0=left, 1=down, 2=right, 3=up)
+            arrows = {0: "\u2190", 1: "\u2193", 2: "\u2192", 3: "\u2191"}
 
         fig, ax = plt.subplots(figsize=(cols * 1.5, rows * 1.5))
         for state in range(rows * cols):

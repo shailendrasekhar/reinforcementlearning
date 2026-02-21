@@ -34,11 +34,17 @@ def _register_defaults():
     from environments.cart_pole import create_cart_pole
     from environments.mountain_car import create_mountain_car
     from environments.pendulum import create_pendulum
+    from environments.cliff_walking import create_cliff_walking
+    from environments.acrobot import create_acrobot
+    from environments.lunar_lander import create_lunar_lander
 
     EnvRegistry.register("frozenlake", create_frozen_lake)
     EnvRegistry.register("cartpole", create_cart_pole)
     EnvRegistry.register("mountaincar", create_mountain_car)
     EnvRegistry.register("pendulum", create_pendulum)
+    EnvRegistry.register("cliffwalking", create_cliff_walking)
+    EnvRegistry.register("acrobot", create_acrobot)
+    EnvRegistry.register("lunarlander", create_lunar_lander)
 
 
 _register_defaults()

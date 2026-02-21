@@ -1,0 +1,163 @@
+@startuml High-Level System Architecture
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam componentStyle rectangle
+skinparam defaultFontName Segoe UI
+skinparam shadowing false
+skinparam roundcorner 12
+skinparam packageBorderThickness 2
+
+title **Reinforcement Learning Framework — High-Level Architecture**
+
+' ──────────────────────────────────────
+'  COLOR PALETTE
+' ──────────────────────────────────────
+skinparam package {
+    BackgroundColor<<ui>>          #E3F2FD
+    BorderColor<<ui>>              #1565C0
+    BackgroundColor<<infra>>       #FFF3E0
+    BorderColor<<infra>>           #E65100
+    BackgroundColor<<core>>        #E8F5E9
+    BorderColor<<core>>            #2E7D32
+    BackgroundColor<<components>>  #F3E5F5
+    BorderColor<<components>>      #6A1B9A
+    BackgroundColor<<agents>>      #FCE4EC
+    BorderColor<<agents>>          #AD1457
+    BackgroundColor<<envs>>        #FFFDE7
+    BorderColor<<envs>>            #F57F17
+}
+
+' ───────────────────────────────
+'  LAYER 1 — Presentation / UI
+' ───────────────────────────────
+package "Presentation Layer  «app.py — Streamlit»" <<ui>> {
+    component [Streamlit UI\n─────────\n• Environment Selector\n• Algorithm Selector\n• Hyperparameter Controls\n• Training Dashboard\n• Output Browser\n• Live Charts & Metrics] as UI
+}
+
+' ───────────────────────────────
+'  LAYER 2 — Infrastructure
+' ───────────────────────────────
+package "Infrastructure Layer  «infrastructure/»" <<infra>> {
+    component [ExperimentRunner\n─────────\nOrchestrates end-to-end\ntrain → evaluate → save] as ER
+    component [ConfigLoader\n─────────\nYAML parse & validate] as CL
+    component [ArtifactStore\n─────────\nOutput directory tree\nmodels / plots / GIFs / CSV] as AS
+    component [Visualizer\n─────────\n6 plot types\n(matplotlib)] as VIS
+    component [Logger\n─────────\nTraining records\nto CSV / console] as LOG
+    component [GifRecorder\n─────────\nEpisode GIF capture\n(imageio)] as GIF
+}
+
+' ───────────────────────────────
+'  LAYER 3 — Core Abstractions
+' ───────────────────────────────
+package "Core Layer  «core/»" <<core>> {
+    component [BaseAgent\n─────────\nAbstract interface\nselect_action / update] as BA
+    component [EnvWrapper\n─────────\nAbstract env interface\nreset / step / close] as EW
+    component [Trainers\n─────────\nEpisodicTrainer\nRolloutTrainer] as TR
+    component [Evaluator\n─────────\nDeterministic\nevaluation loop] as EV
+    component [Callbacks\n─────────\nProgress / Metrics\nCheckpoint / EarlyStopping] as CB
+    component [Types\n─────────\nTransition, TrainingResult\nEvaluationResult] as TY
+}
+
+' ───────────────────────────────
+'  LAYER 4 — Reusable Components
+' ───────────────────────────────
+package "Components Layer  «components/»" <<components>> {
+    component [Neural Networks\n─────────\nMLP, QNetwork, PolicyNet\nActorCritic, Actor, Critic\nGaussianActor] as NN
+    component [Replay Buffer\n─────────\nUniformReplayBuffer\n(off-policy storage)] as RB
+    component [Rollout Buffer\n─────────\nRolloutBuffer\n(on-policy batch)] as ROB
+    component [Exploration\n─────────\nEpsilonGreedy\nBoltzmann] as EX
+    component [Noise\n─────────\nOrnstein-Uhlenbeck\nGaussian] as NO
+    component [Schedulers\n─────────\nLinearScheduler\nExponentialScheduler] as SC
+}
+
+' ───────────────────────────────
+'  LAYER 5 — Concrete Implementations
+' ───────────────────────────────
+package "Agents Layer  «agents/»" <<agents>> {
+    component [Tabular Agents\n─────────\nQ-Learning, SARSA] as TAB
+    component [Deep Value-Based\n─────────\nDQN] as DVB
+    component [Policy Gradient\n─────────\nREINFORCE, A2C\nA3C, PPO] as PG
+    component [Continuous Control\n─────────\nDDPG, TD3, SAC] as CC
+    component [AgentRegistry\n─────────\nregister / create / list] as AR
+}
+
+package "Environments Layer  «environments/»" <<envs>> {
+    component [Gym Wrappers\n─────────\nFrozenLake, CliffWalking\nCartPole, Acrobot\nMountainCar, LunarLander\nPendulum] as GW
+    component [EnvRegistry\n─────────\nregister / create / list] as ENVR
+}
+
+' ═══════════════════════════════
+'  RELATIONSHIPS
+' ═══════════════════════════════
+
+' UI → Infrastructure
+UI -[#1565C0,thickness=2]-> ER : configures &\nlaunches
+UI -[#1565C0,thickness=2]-> AS : browses\noutputs
+UI -[#1565C0]-> GIF : triggers\nrecording
+
+' Infrastructure internal
+ER -[#E65100]-> CL : loads config
+ER -[#E65100]-> AS : saves artifacts
+ER -[#E65100]-> VIS : generates plots
+ER -[#E65100]-> LOG : writes metrics
+ER -[#E65100]-> GIF : records episodes
+
+' Infrastructure → Core
+ER -[#E65100,thickness=2]--> TR : creates &\nruns trainer
+ER -[#E65100]--> EV : runs evaluation
+ER -[#E65100]--> CB : attaches callbacks
+
+' Infrastructure → Agents/Envs (via Registries)
+ER -[#E65100,thickness=2]--> AR : creates agent
+ER -[#E65100,thickness=2]--> ENVR : creates env
+
+' Core → Core
+TR --> BA : calls agent\nmethods
+TR --> EW : calls env\nmethods
+TR --> CB : fires events
+TR --> TY : produces\nTrainingResult
+EV --> BA : select_action
+EV --> EW : step / reset
+EV --> TY : produces\nEvaluationResult
+
+' Agents → Core
+TAB --|> BA : extends
+DVB --|> BA : extends
+PG  --|> BA : extends
+CC  --|> BA : extends
+
+' Environments → Core
+GW  --|> EW : extends
+
+' Agents → Components
+TAB  -[#AD1457]-> EX : uses
+DVB  -[#AD1457]-> NN : uses
+DVB  -[#AD1457]-> RB : uses
+DVB  -[#AD1457]-> EX : uses
+PG   -[#AD1457]-> NN : uses
+PG   -[#AD1457]-> ROB : uses
+CC   -[#AD1457]-> NN : uses
+CC   -[#AD1457]-> RB : uses
+CC   -[#AD1457]-> NO : uses
+
+' Components → Components
+EX -[#6A1B9A]-> SC : driven by
+
+' Registries → Implementations
+AR --> TAB
+AR --> DVB
+AR --> PG
+AR --> CC
+ENVR --> GW
+
+legend right
+  |= Layer |= Responsibility |
+  | <#E3F2FD> Presentation | Streamlit UI — user interaction |
+  | <#FFF3E0> Infrastructure | Orchestration, I/O, persistence |
+  | <#E8F5E9> Core | Abstract interfaces & training loops |
+  | <#F3E5F5> Components | Reusable neural-net & RL building blocks |
+  | <#FCE4EC> Agents | Concrete RL algorithm implementations |
+  | <#FFFDE7> Environments | Gymnasium environment wrappers |
+end legend
+
+@enduml
