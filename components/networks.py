@@ -115,6 +115,91 @@ class ActorCriticNetwork(nn.Module):
 
 
 # ---------------------------------------------------------------------------
+# Dueling network (Wang et al., 2016)
+# ---------------------------------------------------------------------------
+
+class DuelingQNetwork(nn.Module):
+    """Dueling architecture: separate value and advantage streams.
+
+    Q(s,a) = V(s) + A(s,a) - mean_a' A(s,a')
+
+    This decomposition lets the network learn the state value independently
+    of any particular action, improving learning in states where action
+    choice is less critical.
+
+    Reference: Wang et al. (2016) "Dueling Network Architectures for Deep
+    Reinforcement Learning"  https://arxiv.org/abs/1511.07401
+    """
+
+    def __init__(self, state_dim: int, action_dim: int, hidden_dims=(128, 128)):
+        _check_torch()
+        super().__init__()
+        self.action_dim = action_dim
+
+        # Shared feature backbone
+        layers = []
+        prev = state_dim
+        for h in hidden_dims[:-1]:
+            layers.append(nn.Linear(prev, h))
+            layers.append(nn.ReLU())
+            prev = h
+        self.backbone = nn.Sequential(*layers)
+
+        last_h = hidden_dims[-1] if hidden_dims else prev
+
+        # Value stream: V(s) — scalar
+        self.value_stream = nn.Sequential(
+            nn.Linear(prev, last_h),
+            nn.ReLU(),
+            nn.Linear(last_h, 1),
+        )
+
+        # Advantage stream: A(s, a) — one per action
+        self.advantage_stream = nn.Sequential(
+            nn.Linear(prev, last_h),
+            nn.ReLU(),
+            nn.Linear(last_h, action_dim),
+        )
+
+    def forward(self, state):
+        features  = self.backbone(state)
+        value     = self.value_stream(features)                     # (B, 1)
+        advantage = self.advantage_stream(features)                 # (B, A)
+        # Combine using mean-centering for identifiability
+        q = value + advantage - advantage.mean(dim=1, keepdim=True)
+        return q                                                    # (B, A)
+
+
+# ---------------------------------------------------------------------------
+# Categorical / Distributional network (C51)
+# ---------------------------------------------------------------------------
+
+class CategoricalQNetwork(nn.Module):
+    """Distributional Q-network (C51): outputs probability distribution over atoms.
+
+    Instead of predicting a scalar Q-value, outputs a distribution over
+    n_atoms support points, enabling richer value estimation.
+
+    Reference: Bellemare et al. (2017) "A Distributional Perspective on
+    Reinforcement Learning"  https://arxiv.org/abs/1707.06887
+    """
+
+    def __init__(self, state_dim: int, action_dim: int, n_atoms: int = 51,
+                 hidden_dims=(128, 128)):
+        _check_torch()
+        super().__init__()
+        self.action_dim = action_dim
+        self.n_atoms    = n_atoms
+        self.net        = MLP(state_dim, action_dim * n_atoms, hidden_dims)
+
+    def forward(self, state):
+        """Return log-softmax distribution: (B, action_dim, n_atoms)."""
+        logits = self.net(state)                                    # (B, A*N)
+        logits = logits.view(-1, self.action_dim, self.n_atoms)     # (B, A, N)
+        return F.log_softmax(logits, dim=2)                        # log-probs
+
+
+# ---------------------------------------------------------------------------
 # Continuous-action networks
 # ---------------------------------------------------------------------------
 

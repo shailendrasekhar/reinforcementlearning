@@ -1,0 +1,42 @@
+experiment:
+  name: sac_bipedalwalker
+  seed: 42
+
+environment:
+  name: bipedalwalker
+
+agent:
+  name: sac
+  params:
+    learning_rate: 0.0003
+    discount_factor: 0.99
+    tau: 0.005
+    batch_size: 256
+    buffer_size: 300000
+    warmup_steps: 5000
+    init_alpha: 0.2
+    auto_entropy: true
+    hidden_dims: [256, 256]
+    max_action: 1.0
+
+training:
+  num_episodes: 2000
+  max_steps: 1600
+  log_frequency: 50
+
+evaluation:
+  num_episodes: 10
+  success_threshold: 300.0
+
+callbacks:
+  checkpoint:
+    enabled: true
+    frequency: 200
+  progress:
+    enabled: true
+    frequency: 50
+
+output:
+  base_dir: outputs
+  save_plots: true
+  save_metrics_csv: true

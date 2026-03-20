@@ -37,6 +37,9 @@ def _register_defaults():
     from environments.cliff_walking import create_cliff_walking
     from environments.acrobot import create_acrobot
     from environments.lunar_lander import create_lunar_lander
+    from environments.taxi import create_taxi
+    from environments.bipedal_walker import create_bipedal_walker
+    from environments.blackjack import create_blackjack
 
     EnvRegistry.register("frozenlake", create_frozen_lake)
     EnvRegistry.register("cartpole", create_cart_pole)
@@ -45,6 +48,9 @@ def _register_defaults():
     EnvRegistry.register("cliffwalking", create_cliff_walking)
     EnvRegistry.register("acrobot", create_acrobot)
     EnvRegistry.register("lunarlander", create_lunar_lander)
+    EnvRegistry.register("taxi", create_taxi)
+    EnvRegistry.register("bipedalwalker", create_bipedal_walker)
+    EnvRegistry.register("blackjack", create_blackjack)
 
 
 _register_defaults()

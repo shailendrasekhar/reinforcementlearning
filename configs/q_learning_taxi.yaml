@@ -1,0 +1,45 @@
+experiment:
+  name: q_learning_taxi
+  seed: 42
+
+environment:
+  name: taxi
+
+agent:
+  name: q_learning
+  params:
+    learning_rate: 0.1
+    discount_factor: 0.99
+    exploration:
+      strategy: epsilon_greedy
+      params:
+        epsilon_start: 1.0
+        epsilon_end: 0.01
+        decay_type: linear
+        decay_steps: 50000
+
+training:
+  num_episodes: 10000
+  max_steps: 200
+  log_frequency: 500
+
+evaluation:
+  num_episodes: 100
+  success_threshold: 7.0
+
+callbacks:
+  checkpoint:
+    enabled: true
+    frequency: 2000
+  early_stopping:
+    enabled: true
+    patience: 200
+    min_improvement: 0.5
+  progress:
+    enabled: true
+    frequency: 500
+
+output:
+  base_dir: outputs
+  save_plots: true
+  save_metrics_csv: true

@@ -41,6 +41,10 @@ def _register_defaults():
     from agents.sac.agent import SACAgent
     from agents.td3.agent import TD3Agent
     from agents.a3c.agent import A3CAgent
+    from agents.double_dqn.agent import DoubleDQNAgent
+    from agents.dueling_dqn.agent import DuelingDQNAgent
+    from agents.c51.agent import C51Agent
+    from agents.per_dqn.agent import PERDQNAgent
 
     AgentRegistry.register("q_learning", QLearningAgent)
     AgentRegistry.register("sarsa", SarsaAgent)
@@ -52,6 +56,10 @@ def _register_defaults():
     AgentRegistry.register("sac", SACAgent)
     AgentRegistry.register("td3", TD3Agent)
     AgentRegistry.register("a3c", A3CAgent)
+    AgentRegistry.register("double_dqn", DoubleDQNAgent)
+    AgentRegistry.register("dueling_dqn", DuelingDQNAgent)
+    AgentRegistry.register("c51", C51Agent)
+    AgentRegistry.register("per_dqn", PERDQNAgent)
 
 
 _register_defaults()
